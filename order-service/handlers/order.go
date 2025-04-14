@@ -1,45 +1,47 @@
 package handlers
 
 import (
-	"fmt"
+	"context"
 	"net/http"
+	"time"
+	"user-service/order-service/db"
 	"user-service/order-service/models"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
-var orders = make(map[string]models.Order)
+func CreateOrder(c *gin.Context) {
+	var order models.Order
 
-func CreateOrder(c *gin.Context){
-	var order  models.Order
-
-	if err:= c.ShouldBindJSON(&order); err!=nil{
-		c.JSON(http.StatusBadRequest, gin.H{"error":err.Error()})
+	if err := c.ShouldBindJSON(&order); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	userURL := fmt.Sprintf("http://user-service:8001/users/%s", order.UserID)
-	resp, err := http.Get(userURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := db.OrderCollection.InsertOne(ctx, order)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create order"})
 		return
-		}
-		
-
-	orders[order.ID]=order
-
-	c.JSON(http.StatusOK,order);
-
+	}
+	c.JSON(http.StatusOK, order)
 
 }
 
-func GetOrder(c *gin.Context){
-	id:= c.Param("id")
-	order, exist:= orders[id];
-	if !exist{
-		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
-		return
-		}
+func GetOrder(c *gin.Context) {
+	id := c.Param("id")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var order models.Order
 
-		c.JSON(http.StatusOK,order)
+	err := db.OrderCollection.FindOne(ctx, bson.M{"id": id}).Decode(&order)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get order"})
+		return
+	}
+
+	c.JSON(http.StatusOK, order)
 }
